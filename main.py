@@ -3,10 +3,14 @@ import sys
 import traceback
 import time
 import os
+import subprocess
 
 from DrissionPage import ChromiumPage, ChromiumOptions
 from src.utils import CONFIG, sendNotification, getProjectRoot
 from src.CloudflareBypasser import CloudflareBypasser
+
+# Importing Proxy Bypass Functions
+from proxy_bypass import UserAgentTester
 
 def setupLogging():
     _format = CONFIG['logging']['format']
@@ -51,11 +55,29 @@ def open_url_in_chrome(driver, url, duration):
     time.sleep(duration * 60)  # Convert minutes to seconds
     # You can add more interactions here if needed
 
+def bypass_proxy(proxy_details):
+    tester = UserAgentTester("user_agents.json")  # Ensure the user agents file is in the same directory
+    successful_user_agent = None
+
+    # Test user agents to bypass proxy
+    for user_agent in tester.user_agents:
+        if tester.test_user_agent(proxy_details, user_agent):
+            successful_user_agent = user_agent
+            break
+
+    if successful_user_agent:
+        logging.info(f'Successfully bypassed proxy with user agent: {successful_user_agent["user-agent"]}')
+        return successful_user_agent["user-agent"]
+    else:
+        logging.warning('Failed to bypass proxy with any user agent.')
+        return None
+
 def main():
     setupLogging()
 
     url = CONFIG['url']
     duration = CONFIG['duration']
+    proxy_details = CONFIG['browser']['proxy']  # Get the proxy details from config
 
     try:
         browser_path = os.getenv('CHROME_PATH', "/usr/bin/google-chrome")
@@ -74,6 +96,13 @@ def main():
             "-disable-gpu",
             "-accept-lang=en-US",
         ]
+
+        # Bypass Proxy
+        if proxy_details:
+            successful_user_agent = bypass_proxy(proxy_details)
+            if successful_user_agent:
+                arguments.append(f"--user-agent={successful_user_agent}")
+
         options = get_chromium_options(browser_path, arguments)
 
         # Initialize the browser and bypass Cloudflare
